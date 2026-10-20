@@ -1,6 +1,6 @@
 /* <student numbers here - required on first line of every .c/.h> */
 /**
- * nav_common.c - angle maths, range windows and median.
+ * nav_common.c - angle maths and median.
  * Pure functions: no motor commands, no hardware access.
  */
 #include "nav_common.h"
@@ -34,17 +34,6 @@ int16_t Turn_To_Heading_Deg(int16_t current_cdeg, int16_t target_cdeg)
     int32_t d = Angle_Delta_cdeg(target_cdeg, current_cdeg);
     // round to the nearest degree, don't truncate
     return (int16_t)((d >= 0) ? (d + 50) / 100 : (d - 50) / 100);
-}
-
-uint16_t Window_Min(int a, int b, int tol)
-{
-    int lo = ((a < b) ? a : b) - tol;
-    return (uint16_t)((lo < 0) ? 0 : lo);
-}
-
-uint16_t Window_Max(int a, int b, int tol)
-{
-    return (uint16_t)(((a > b) ? a : b) + tol);
 }
 
 uint16_t Median_mm(uint16_t *v, uint8_t n)

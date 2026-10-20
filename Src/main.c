@@ -17,36 +17,26 @@
  */
 
 /*
- *
  * Flow:
  *   IDLE -> PATH_SEARCH -> ORIENT -> PATHFIND
  *        -> DEPOSIT_SEARCH -> DEPOSIT_ORIENT -> DEPOSIT -> IDLE
- *   B1, wheel drop, bumper or cliff from any state -> IDLE
+ *   B1 or wheel drop from any state -> IDLE
  *
- * Each loop iteration (one Kobuki packet, ~20 ms):
- *   1. READ      sensors
- *   2. OVERRIDE  safety faults and B1 beat every state
- *   3. FSM       one switch: "exit condition met -> Enter_State(next),
- *                otherwise keep doing this state's job"
+ *   PATH_SEARCH     spin until the start bollard is seen; its range says A or B
+ *   ORIENT          turn from the bollard onto the free path
+ *   PATHFIND        follow walls / ledges to the corner, drive into storage
+ *   DEPOSIT_SEARCH  spin until the marker is seen; its side says D1 or D2
+ *   DEPOSIT_ORIENT  face the marker
+ *   DEPOSIT         stop with the robot's front 100 mm from it
  *
- * Rules:
- *   - One motor command per loop.
- *   - Enter_State() is the ONLY place `state` changes, and the only place
- *     for one-off setup (setpoints, LEDs, starting sub-tasks).
- *   - Sub-tasks (Navigation/): X_Start() once, then X_Run() every loop
- *     until it returns TASK_DONE or TASK_FAILED.
+ * Each loop (one Kobuki packet, ~20 ms): read sensors, check B1 / wheel
+ * drop, then run the current state. Enter_State() is the only place the
+ * state changes and does each state's one-off setup.
  *
- * LEDs:  led_1 = main stage, led_2 = deposit stage
- *   IDLE                  off / off
- *   PATH_SEARCH           red
- *   ORIENT                yellow
- *   PATHFIND              green
- *   DEPOSIT_SEARCH        green / red
- *   DEPOSIT_ORIENT        green / yellow
- *   DEPOSIT               green / green
- *   Safety stop           red / red    wheel drop
- *                         red / yellow bumper
- *                         red / green  cliff
+ * LEDs (led_1 / led_2):
+ *   PATH_SEARCH red, ORIENT yellow, PATHFIND green,
+ *   DEPOSIT_SEARCH green/red, DEPOSIT_ORIENT green/yellow, DEPOSIT green/green
+ *   Wheel drop red/red, something failed yellow/yellow, finished off/off
  */
 
 #include <stdint.h>
@@ -67,8 +57,6 @@
 #include "deposit.h"
 #include "safety.h"
 
-
-// States
 typedef enum {
     STATE_IDLE,
     STATE_PATH_SEARCH,
@@ -83,30 +71,22 @@ static Main_State      state;
 static Path            path;
 static Deposit         deposit;
 static Search_Result   found;
-static uint8_t         search_retries;  // reset when a run starts
 static Kobuki_LED_Enum led_1, led_2;
 
-// Path definitions
+// A or B: whichever expected range the bollard is closer to
 static Path Classify_Path(uint16_t range_mm)
 {
-    if (abs((int)range_mm - A1_RANGE_MM) <= PATH_TOL_MM) return PATH_A;
-    if (abs((int)range_mm - B1_RANGE_MM) <= PATH_TOL_MM) return PATH_B;
-    return PATH_UNKNOWN;
+    return (abs((int)range_mm - A1_RANGE_MM) < abs((int)range_mm - B1_RANGE_MM)) ? PATH_A : PATH_B;
 }
 
-static Deposit Classify_Deposit(uint16_t range_mm)
+// D1 or D2: which side of the robot the marker was on
+static Deposit Classify_Deposit(int16_t bearing_deg)
 {
-    if (abs((int)range_mm - D1_RANGE_MM) <= DEPOSIT_TOL_MM) return DEPOSIT_1;
-    if (abs((int)range_mm - D2_RANGE_MM) <= DEPOSIT_TOL_MM) return DEPOSIT_2;
-    return DEPOSIT_UNKNOWN;
+    uint8_t on_right = (bearing_deg < 0);
+    return (on_right == DEP_RIGHT_IS_D1) ? DEPOSIT_1 : DEPOSIT_2;
 }
 
-static int16_t Path_Turn_Deg(Path p)
-{
-    return (p == PATH_A) ? TURN_AFTER_A1_DEG : TURN_AFTER_B1_DEG;
-}
-
-// State entry conditions
+// The only place the state changes. One-off setup for each state goes here.
 static void Enter_State(Main_State next, const Kobuki_Typedef *k)
 {
     state = next;
@@ -120,17 +100,17 @@ static void Enter_State(Main_State next, const Kobuki_Typedef *k)
             break;
 
         case STATE_PATH_SEARCH:
-            Search_Start(k, Window_Min(A1_RANGE_MM, B1_RANGE_MM, PATH_TOL_MM),
-                            Window_Max(A1_RANGE_MM, B1_RANGE_MM, PATH_TOL_MM));
+            Search_Start(k, PATH_MIN_MM, PATH_MAX_MM, 0, 180);     // any direction
             led_1 = RED;    led_2 = OFF;
             break;
 
-        case STATE_ORIENT:
-            /* face the bollard and turn onto the path in ONE rotation */
-            Orient_Start(k, (int16_t)(Turn_To_Heading_Deg(k->angle, found.heading_cdeg)
-                                      + Path_Turn_Deg(path)));
+        case STATE_ORIENT: {
+            // face the bollard, then turn onto the path - in one rotation
+            int16_t after = (path == PATH_A) ? TURN(TURN_AFTER_A1_DEG) : TURN(TURN_AFTER_B1_DEG);
+            Orient_Start(k, (int16_t)(Turn_To_Heading_Deg(k->angle, found.heading_cdeg) + after));
             led_1 = YELLOW;
             break;
+        }
 
         case STATE_PATHFIND:
             Moves_Start(k, Route_For_Path(path));
@@ -138,8 +118,7 @@ static void Enter_State(Main_State next, const Kobuki_Typedef *k)
             break;
 
         case STATE_DEPOSIT_SEARCH:
-            Search_Start(k, Window_Min(D1_RANGE_MM, D2_RANGE_MM, DEPOSIT_TOL_MM),
-                            Window_Max(D1_RANGE_MM, D2_RANGE_MM, DEPOSIT_TOL_MM));
+            Search_Start(k, DEP_MIN_MM, DEP_MAX_MM, DEP_BAND_MIN_DEG, DEP_BAND_MAX_DEG);
             led_2 = RED;
             break;
 
@@ -149,23 +128,19 @@ static void Enter_State(Main_State next, const Kobuki_Typedef *k)
             break;
 
         case STATE_DEPOSIT:
-            Deposit_Start(Window_Max(D1_RANGE_MM, D2_RANGE_MM, DEPOSIT_TOL_MM));
+            Deposit_Start(DEP_MAX_MM);
             led_2 = GREEN;
             break;
     }
 }
 
-// Stop and show which safety check fired (stays until the next start)
-static void Safety_Stop(Safety_Fault fault, const Kobuki_Typedef *k)
+// Stop and leave the LEDs showing why (until the next start)
+static void Stop_With_LEDs(const Kobuki_Typedef *k, Kobuki_LED_Enum colour)
 {
     Enter_State(STATE_IDLE, k);
-    led_1 = RED;
-    led_2 = (fault == SAFETY_WHEEL_DROP) ? RED
-          : (fault == SAFETY_BUMPER)     ? YELLOW
-          :                                GREEN;      // cliff
+    led_1 = colour; led_2 = colour;
 }
 
-// Main Loop
 int main(void)
 {
     Kobuki_Typedef kobuki = {0};
@@ -178,88 +153,69 @@ int main(void)
     Enter_State(STATE_IDLE, &kobuki);
 
     while (1) {
-        // 1. READ
+        // 1. Read
         Kobuki_Read(&kobuki);
         Ultrasonic_Detect(&object);
         Kobuki_Update_LEDs(led_1, led_2);
 
-        // 2. GLOBAL OVERRIDES
-        Safety_Fault fault = Safety_Check(&kobuki);
+        // 2. Overrides: wheel drop and B1 stop everything
+        uint8_t lifted  = (Safety_Check(&kobuki) != SAFETY_OK);
+        uint8_t stop_b1 = ((kobuki.button & BUTTON_1_STOP) != 0U);
 
-        if ((fault != SAFETY_OK) && (state != STATE_IDLE)) {
-            Safety_Stop(fault, &kobuki);
-            continue;                       /* one motor command per loop */
-        }
-        if (((kobuki.button & BUTTON_1_STOP) != 0U) && (state != STATE_IDLE)) {
-            Enter_State(STATE_IDLE, &kobuki);
-            continue;
+        if (state != STATE_IDLE) {
+            if (lifted)  { Stop_With_LEDs(&kobuki, RED); continue; }
+            if (stop_b1) { Enter_State(STATE_IDLE, &kobuki); continue; }
         }
 
-        // 3. FSM
+        // 3. Current state
+        Task_Status s;
         switch (state) {
-
             case STATE_IDLE:
-                // can't start while lifted / bumped / at a cliff / B1 held
-                if (((kobuki.button & BUTTON_0_START) != 0U) &&
-                    ((kobuki.button & BUTTON_1_STOP)  == 0U) &&
-                    (fault == SAFETY_OK)) {
-                    search_retries = 0;
+                if (((kobuki.button & BUTTON_0_START) != 0U) && !stop_b1 && !lifted) {
                     Enter_State(STATE_PATH_SEARCH, &kobuki);
                 } else {
                     Kobuki_Drive(STOP);
                 }
                 break;
 
-            case STATE_PATH_SEARCH: {
-                Task_Status s = Search_Run(&kobuki, &object, &found);
+            case STATE_PATH_SEARCH:
+                s = Search_Run(&kobuki, &object, &found);
                 if (s == TASK_DONE) {
                     path = Classify_Path(found.range_mm);
-                    if (path != PATH_UNKNOWN) {
-                        Enter_State(STATE_ORIENT, &kobuki);
-                    } else if (++search_retries < MAX_SEARCH_RETRIES) {
-                        Enter_State(STATE_PATH_SEARCH, &kobuki);  // skip it, keep looking
-                    } else {
-                        Enter_State(STATE_IDLE, &kobuki);         // give up
-                    }
+                    Enter_State(STATE_ORIENT, &kobuki);
                 } else if (s == TASK_FAILED) {
-                    Enter_State(STATE_IDLE, &kobuki);
+                    Stop_With_LEDs(&kobuki, YELLOW);
                 }
                 break;
-            }
 
             case STATE_ORIENT:
-                if (Orient_Run(&kobuki) == TASK_DONE) {
-                    Enter_State(STATE_PATHFIND, &kobuki);
-                }
+                if (Orient_Run(&kobuki) == TASK_DONE) Enter_State(STATE_PATHFIND, &kobuki);
                 break;
 
             case STATE_PATHFIND:
-                if (Moves_Run(&kobuki) == TASK_DONE) {
-                    Enter_State(STATE_DEPOSIT_SEARCH, &kobuki);
-                }
+                s = Moves_Run(&kobuki);
+                if (s == TASK_DONE)        Enter_State(STATE_DEPOSIT_SEARCH, &kobuki);
+                else if (s == TASK_FAILED) Stop_With_LEDs(&kobuki, YELLOW);
                 break;
 
-            case STATE_DEPOSIT_SEARCH: {
-                Task_Status s = Search_Run(&kobuki, &object, &found);
+            case STATE_DEPOSIT_SEARCH:
+                s = Search_Run(&kobuki, &object, &found);
                 if (s == TASK_DONE) {
-                    deposit = Classify_Deposit(found.range_mm);
+                    deposit = Classify_Deposit(found.bearing_deg);
                     Enter_State(STATE_DEPOSIT_ORIENT, &kobuki);
                 } else if (s == TASK_FAILED) {
-                    Enter_State(STATE_IDLE, &kobuki);
+                    Stop_With_LEDs(&kobuki, YELLOW);
                 }
                 break;
-            }
 
             case STATE_DEPOSIT_ORIENT:
-                if (Orient_Run(&kobuki) == TASK_DONE) {
-                    Enter_State(STATE_DEPOSIT, &kobuki);
-                }
+                if (Orient_Run(&kobuki) == TASK_DONE) Enter_State(STATE_DEPOSIT, &kobuki);
                 break;
 
             case STATE_DEPOSIT:
-                if (Deposit_Run(&kobuki, &object) != TASK_RUNNING) {
-                    Enter_State(STATE_IDLE, &kobuki);
-                }
+                s = Deposit_Run(&kobuki, &object);
+                if (s == TASK_DONE)        Enter_State(STATE_IDLE, &kobuki);
+                else if (s == TASK_FAILED) Stop_With_LEDs(&kobuki, YELLOW);
                 break;
         }
     }

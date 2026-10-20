@@ -1,14 +1,15 @@
 /*
  * deposit.c - drive towards the deposit marker
  *
- * The sensor's accuracy is only guaranteed from 300 mm, so we stand still,
- * take the median range from out there, then drive the remainder to
- * DEPOSIT_TARGET_MM using wheel odometry.
+ * Stand still, take the median of DEPOSIT_SAMPLES readings, then drive the
+ * rest of the way with wheel odometry so the robot's front stops
+ * DEPOSIT_TARGET_MM from the marker. (The final reading would be below the
+ * sensor's guaranteed 300 mm, so the last part can't be done by sensor.)
  */
 #include "deposit.h"
 #include "nav_config.h"
 
-typedef enum { DEPOSIT_MEASURE, DEPOSIT_DRIVE } Deposit_Phase;
+typedef enum { DEPOSIT_MEASURE, DEPOSIT_BACKOFF, DEPOSIT_DRIVE } Deposit_Phase;
 
 static struct {
     Deposit_Phase phase;
@@ -33,9 +34,11 @@ Task_Status Deposit_Run(const Kobuki_Typedef *k, const US_Typedef *obj)
             if (dep.samples >= DEPOSIT_SAMPLES) { // Run for n number of samples to collect an accurate sensor reading 
                 int32_t range = (int32_t)Median_mm(dep.buf_mm, dep.samples); // Find the median of the sensor reading
 
-                // If it is below the sensor accuracy then it will fail the task
-                if (range <= SENSOR_MIN_MM + 20) {
-                    return TASK_FAILED;
+                // Too close for the sensor to measure: reverse, then measure again
+                if (range <= SENSOR_MIN_MM) {
+                    Kobuki_Drive_Distance_Setpoint(k->distance, -DEPOSIT_BACKOFF_MM);
+                    dep.phase = DEPOSIT_BACKOFF;
+                    return TASK_RUNNING;
                 }
 
                 // If it is significantly above an expected range then compute an error
@@ -43,11 +46,21 @@ Task_Status Deposit_Run(const Kobuki_Typedef *k, const US_Typedef *obj)
                     return TASK_FAILED;
                 }
 
-                int32_t gap = range - DEPOSIT_TARGET_MM - SENSOR_OFFSET_MM; // Set the gap needed to be driven
+                int32_t gap = range - DEPOSIT_TARGET_MM - SENSOR_TO_FRONT_MM; // Set the gap needed to be driven
                 if (gap < 0) gap = 0;
                 Kobuki_Drive_Distance_Setpoint(k->distance, (int16_t)gap); // Set our setpoint at target distance
                 dep.phase = DEPOSIT_DRIVE;
             }
+            return TASK_RUNNING;
+
+        case DEPOSIT_BACKOFF:
+            if (k->distance_complete) {
+                Kobuki_Drive(STOP);
+                dep.phase   = DEPOSIT_MEASURE;
+                dep.samples = 0;
+                return TASK_RUNNING;
+            }
+            Kobuki_Drive_Distance(k->distance);
             return TASK_RUNNING;
 
         case DEPOSIT_DRIVE:
