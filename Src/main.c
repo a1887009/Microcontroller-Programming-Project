@@ -16,7 +16,41 @@
  ******************************************************************************
  */
 
+/*
+ *
+ * Flow:
+ *   IDLE -> PATH_SEARCH -> ORIENT -> PATHFIND
+ *        -> DEPOSIT_SEARCH -> DEPOSIT_ORIENT -> DEPOSIT -> IDLE
+ *   B1, wheel drop, bumper or cliff from any state -> IDLE
+ *
+ * Each loop iteration (one Kobuki packet, ~20 ms):
+ *   1. READ      sensors
+ *   2. OVERRIDE  safety faults and B1 beat every state
+ *   3. FSM       one switch: "exit condition met -> Enter_State(next),
+ *                otherwise keep doing this state's job"
+ *
+ * Rules:
+ *   - One motor command per loop.
+ *   - Enter_State() is the ONLY place `state` changes, and the only place
+ *     for one-off setup (setpoints, LEDs, starting sub-tasks).
+ *   - Sub-tasks (Navigation/): X_Start() once, then X_Run() every loop
+ *     until it returns TASK_DONE or TASK_FAILED.
+ *
+ * LEDs:  led_1 = main stage, led_2 = deposit stage
+ *   IDLE                  off / off
+ *   PATH_SEARCH           red
+ *   ORIENT                yellow
+ *   PATHFIND              green
+ *   DEPOSIT_SEARCH        green / red
+ *   DEPOSIT_ORIENT        green / yellow
+ *   DEPOSIT               green / green
+ *   Safety stop           red / red    wheel drop
+ *                         red / yellow bumper
+ *                         red / green  cliff
+ */
+
 #include <stdint.h>
+#include <stdlib.h>
 
 #define STM32G474xx
 #include "stm32g4xx.h"
@@ -25,217 +59,208 @@
 #include "uart.h"
 #include "ultrasonic.h"
 
-/* Kobuki button values */
-#define BUTTON_0_START 0x01U
-#define BUTTON_1_STOP 0x02U
-#define BUTTON_2_ROTATE 0x04U
+#include "nav_config.h"
+#include "nav_common.h"
+#include "search.h"
+#include "motion.h"
+#include "routes.h"
+#include "deposit.h"
+#include "safety.h"
 
-// Logic
-#define NULL 0
-#define TRUE 1
-
-// Variables
-#define A1_DISTANCE 595
-#define B1_DISTANCE 445
-#define BOLLARD_VARIANCE 200
-
-static volatile int test = 0;
 
 // States
-static enum {IDLE, SEARCH, ORIENT, PATHFIND, STORAGE, DEPOSIT} state;
-static enum {UNDETECTED_PATH, PATH_A, PATH_B} path;
-static enum {UNDETECTED_DEPOSIT, DEPOSIT_1, DEPOSIT_2} deposit;
+typedef enum {
+    STATE_IDLE,
+    STATE_PATH_SEARCH,
+    STATE_ORIENT,
+    STATE_PATHFIND,
+    STATE_DEPOSIT_SEARCH,
+    STATE_DEPOSIT_ORIENT,
+    STATE_DEPOSIT
+} Main_State;
 
-static void Send_Kobuki_Move(int16_t speed, int16_t radius)
+static Main_State      state;
+static Path            path;
+static Deposit         deposit;
+static Search_Result   found;
+static uint8_t         search_retries;  // reset when a run starts
+static Kobuki_LED_Enum led_1, led_2;
+
+// Path definitions
+static Path Classify_Path(uint16_t range_mm)
 {
-    uint8_t payload[6];
-    payload[0] = 0x01U; /* Base Control sub-packet ID. */
-    payload[1] = 0x04U; /* Speed and radius occupy four bytes. */
-    payload[2] = (uint8_t)(speed & 0xFF);
-    payload[3] = (uint8_t)((uint16_t)speed >> 8);
-    payload[4] = (uint8_t)(radius & 0xFF);
-    payload[5] = (uint8_t)((uint16_t)radius >> 8);
-
-    Kobuki_Tx(payload, sizeof(payload));
+    if (abs((int)range_mm - A1_RANGE_MM) <= PATH_TOL_MM) return PATH_A;
+    if (abs((int)range_mm - B1_RANGE_MM) <= PATH_TOL_MM) return PATH_B;
+    return PATH_UNKNOWN;
 }
 
-int main(void) {
-    // Both of these only for testing purposes. Not required
-    volatile uint16_t ultrasonic_read;
-    volatile uint16_t adc_read;
-    Kobuki_Typedef kobuki;
-    US_Typedef object;
-    Kobuki_LED_Enum led_1, led_2;
+static Deposit Classify_Deposit(uint16_t range_mm)
+{
+    if (abs((int)range_mm - D1_RANGE_MM) <= DEPOSIT_TOL_MM) return DEPOSIT_1;
+    if (abs((int)range_mm - D2_RANGE_MM) <= DEPOSIT_TOL_MM) return DEPOSIT_2;
+    return DEPOSIT_UNKNOWN;
+}
+
+static int16_t Path_Turn_Deg(Path p)
+{
+    return (p == PATH_A) ? TURN_AFTER_A1_DEG : TURN_AFTER_B1_DEG;
+}
+
+// State entry conditions
+static void Enter_State(Main_State next, const Kobuki_Typedef *k)
+{
+    state = next;
+
+    switch (next) {
+        case STATE_IDLE:
+            Kobuki_Drive(STOP);
+            path    = PATH_UNKNOWN;
+            deposit = DEPOSIT_UNKNOWN;
+            led_1 = OFF;    led_2 = OFF;
+            break;
+
+        case STATE_PATH_SEARCH:
+            Search_Start(k, Window_Min(A1_RANGE_MM, B1_RANGE_MM, PATH_TOL_MM),
+                            Window_Max(A1_RANGE_MM, B1_RANGE_MM, PATH_TOL_MM));
+            led_1 = RED;    led_2 = OFF;
+            break;
+
+        case STATE_ORIENT:
+            /* face the bollard and turn onto the path in ONE rotation */
+            Orient_Start(k, (int16_t)(Turn_To_Heading_Deg(k->angle, found.heading_cdeg)
+                                      + Path_Turn_Deg(path)));
+            led_1 = YELLOW;
+            break;
+
+        case STATE_PATHFIND:
+            Moves_Start(k, Route_For_Path(path));
+            led_1 = GREEN;
+            break;
+
+        case STATE_DEPOSIT_SEARCH:
+            Search_Start(k, Window_Min(D1_RANGE_MM, D2_RANGE_MM, DEPOSIT_TOL_MM),
+                            Window_Max(D1_RANGE_MM, D2_RANGE_MM, DEPOSIT_TOL_MM));
+            led_2 = RED;
+            break;
+
+        case STATE_DEPOSIT_ORIENT:
+            Orient_Start(k, Turn_To_Heading_Deg(k->angle, found.heading_cdeg));
+            led_2 = YELLOW;
+            break;
+
+        case STATE_DEPOSIT:
+            Deposit_Start(Window_Max(D1_RANGE_MM, D2_RANGE_MM, DEPOSIT_TOL_MM));
+            led_2 = GREEN;
+            break;
+    }
+}
+
+// Stop and show which safety check fired (stays until the next start)
+static void Safety_Stop(Safety_Fault fault, const Kobuki_Typedef *k)
+{
+    Enter_State(STATE_IDLE, k);
+    led_1 = RED;
+    led_2 = (fault == SAFETY_WHEEL_DROP) ? RED
+          : (fault == SAFETY_BUMPER)     ? YELLOW
+          :                                GREEN;      // cliff
+}
+
+// Main Loop
+int main(void)
+{
+    Kobuki_Typedef kobuki = {0};
+    US_Typedef     object = {0};
 
     UART_Init();
     ADC_Init();
     Ultrasonic_Init();
-    state = IDLE;
-    led_1 = OFF;
-    led_2 = OFF;
-    path = UNDETECTED_PATH;
-    deposit = UNDETECTED_DEPOSIT;
+
+    Enter_State(STATE_IDLE, &kobuki);
 
     while (1) {
+        // 1. READ
         Kobuki_Read(&kobuki);
         Ultrasonic_Detect(&object);
-
-        // Both of these only for testing purposes. Not required
-        ultrasonic_read = Ultrasonic_Read();
-        adc_read = ADC_Read(ADC_CHANNEL_1);
         Kobuki_Update_LEDs(led_1, led_2);
 
-        /* Button 1 is the global stop command. It has priority over
-         * every other state and input. */
-        if ((kobuki.button & BUTTON_1_STOP) != 0U)
-        {
-            state = IDLE;
+        // 2. GLOBAL OVERRIDES
+        Safety_Fault fault = Safety_Check(&kobuki);
+
+        if ((fault != SAFETY_OK) && (state != STATE_IDLE)) {
+            Safety_Stop(fault, &kobuki);
+            continue;                       /* one motor command per loop */
         }
-        // Logic Loop
+        if (((kobuki.button & BUTTON_1_STOP) != 0U) && (state != STATE_IDLE)) {
+            Enter_State(STATE_IDLE, &kobuki);
+            continue;
+        }
+
+        // 3. FSM
         switch (state) {
-            case IDLE:
-                if ((kobuki.button & BUTTON_0_START) != 0U)
-                {
-                    state = SEARCH;
+
+            case STATE_IDLE:
+                // can't start while lifted / bumped / at a cliff / B1 held
+                if (((kobuki.button & BUTTON_0_START) != 0U) &&
+                    ((kobuki.button & BUTTON_1_STOP)  == 0U) &&
+                    (fault == SAFETY_OK)) {
+                    search_retries = 0;
+                    Enter_State(STATE_PATH_SEARCH, &kobuki);
+                } else {
+                    Kobuki_Drive(STOP);
                 }
                 break;
-            case SEARCH:
-                if ((ultrasonic_read <= A1_DISTANCE + BOLLARD_VARIANCE) && (ultrasonic_read >= A1_DISTANCE - BOLLARD_VARIANCE))
-                {
-                    path = PATH_A;
-                    Kobuki_Rotate(0);
-                    state = ORIENT;
-                } else if ((ultrasonic_read <= B1_DISTANCE + BOLLARD_VARIANCE) && (ultrasonic_read >= B1_DISTANCE - BOLLARD_VARIANCE))
-                {
-                    path = PATH_B;
-                    Kobuki_Rotate(0);
-                    state = ORIENT;
+
+            case STATE_PATH_SEARCH: {
+                Task_Status s = Search_Run(&kobuki, &object, &found);
+                if (s == TASK_DONE) {
+                    path = Classify_Path(found.range_mm);
+                    if (path != PATH_UNKNOWN) {
+                        Enter_State(STATE_ORIENT, &kobuki);
+                    } else if (++search_retries < MAX_SEARCH_RETRIES) {
+                        Enter_State(STATE_PATH_SEARCH, &kobuki);  // skip it, keep looking
+                    } else {
+                        Enter_State(STATE_IDLE, &kobuki);         // give up
+                    }
+                } else if (s == TASK_FAILED) {
+                    Enter_State(STATE_IDLE, &kobuki);
+                }
+                break;
+            }
+
+            case STATE_ORIENT:
+                if (Orient_Run(&kobuki) == TASK_DONE) {
+                    Enter_State(STATE_PATHFIND, &kobuki);
                 }
                 break;
 
-            case ORIENT:
+            case STATE_PATHFIND:
+                if (Moves_Run(&kobuki) == TASK_DONE) {
+                    Enter_State(STATE_DEPOSIT_SEARCH, &kobuki);
+                }
                 break;
 
-            // case PATHFIND:
-            //     break;
-
-            // case STORAGE:
-            //     break;
-
-            // case DEPOSIT:
-            //     break;
-        }
-        
-        // Action Loop
-        switch (state) {
-            case IDLE:
-                // Stop the robot.
-                Send_Kobuki_Move(0, 0);
+            case STATE_DEPOSIT_SEARCH: {
+                Task_Status s = Search_Run(&kobuki, &object, &found);
+                if (s == TASK_DONE) {
+                    deposit = Classify_Deposit(found.range_mm);
+                    Enter_State(STATE_DEPOSIT_ORIENT, &kobuki);
+                } else if (s == TASK_FAILED) {
+                    Enter_State(STATE_IDLE, &kobuki);
+                }
                 break;
-            case SEARCH:
-                Kobuki_Rotate(SEARCH_SPEED);
+            }
+
+            case STATE_DEPOSIT_ORIENT:
+                if (Orient_Run(&kobuki) == TASK_DONE) {
+                    Enter_State(STATE_DEPOSIT, &kobuki);
+                }
                 break;
 
-            case ORIENT:
-                if (path == PATH_A) {Kobuki_Rotate_Angle_Setpoint(kobuki.angle, 90); state = PATHFIND;}
-                if (path == PATH_B) {Kobuki_Rotate_Angle_Setpoint(kobuki.angle, 270); state = PATHFIND;}
-                
+            case STATE_DEPOSIT:
+                if (Deposit_Run(&kobuki, &object) != TASK_RUNNING) {
+                    Enter_State(STATE_IDLE, &kobuki);
+                }
                 break;
-
-            case PATHFIND:
-                Kobuki_Rotate_Angle(kobuki.angle);
-                break;
-
-            // case STORAGE:
-            //     break;
-
-            // case DEPOSIT:
-            //     break;
-
-            default:
-                
-                break;
-
         }
     }
 }
-
-
-// SAVED FROM EXAMPLE
-// int main(void) {
-//     // Both of these only for testing purposes. Not required
-//     volatile uint16_t ultrasonic_read;
-//     volatile uint16_t adc_read;
-//     Kobuki_Typedef kobuki;
-//     US_Typedef object;
-//     Kobuki_LED_Enum led_1, led_2;
-
-//     UART_Init();
-//     ADC_Init();
-//     Ultrasonic_Init();
-//     state = IDLE;
-//     led_1 = OFF;
-//     led_2 = OFF;
-//     path = UNDETECTED;
-//     deposit = UNDETECTED;
-
-//     while (1) {
-//         Kobuki_Read(&kobuki);
-//         Ultrasonic_Detect(&object);
-
-//         // Both of these only for testing purposes. Not required
-//         ultrasonic_read = Ultrasonic_Read();
-//         adc_read = ADC_Read(ADC_CHANNEL_1);
-//         Kobuki_Update_LEDs(led_1, led_2);
-
-//         // A TEST FSM
-//         switch (state) {
-//             case IDLE:
-//                 if (kobuki.button == BUTTON_0_START) {
-//                     state = SEARCH;
-//                     led_1 = RED;
-//                     Kobuki_Rotate_Angle_Setpoint(kobuki.angle, 450);
-//                     // Kobuki_Drive_Distance_Setpoint(kobuki.distance, 100);
-//                 }
-//                 else if (kobuki.button == BUTTON_1_STOP) {
-//                     state = SEARCH;
-//                     led_1 = RED;
-//                     Kobuki_Rotate_Angle_Setpoint(kobuki.angle, 270);
-//                     // Kobuki_Drive_Distance_Setpoint(kobuki.distance, -100);
-//                 }
-//                 else if (kobuki.button == BUTTON_2_ROTATE) {
-//                     state = SEARCH;
-//                     led_1 = RED;
-//                     Kobuki_Rotate_Angle_Setpoint(kobuki.angle, 90);
-//                     // Kobuki_Drive_Distance_Setpoint(kobuki.distance, 1000);
-//                 }
-//                 else {
-//                     Kobuki_Drive(STOP);
-//                 }
-//                 break;
-
-//             case SEARCH:
-//                 if ((kobuki.wheeldrop != NULL) |
-//                     ((kobuki.bumper + kobuki.cliff) != NULL) |
-//                     (kobuki.rotation_complete == TRUE) |
-//                     (kobuki.distance_complete == TRUE)) {
-//                     state = IDLE;
-//                     led_1 = YELLOW;
-//                 }
-//                 else {
-//                     Kobuki_Rotate_Angle(kobuki.angle);
-//                     // Kobuki_Drive_Distance(kobuki.distance);
-//                 }
-//                 break;
-
-//             case OBSTACLE:
-//                 break;
-
-//             case AVOID:
-//                 break;
-
-//             case OBJECT:
-//                 break;
-//         }
-//     }
-// }

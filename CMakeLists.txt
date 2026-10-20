@@ -35,6 +35,12 @@ target_sources(${PROJECT_NAME} PRIVATE
   "Src/Kobuki_Drivers/kobuki.c"
   "Src/ADC/ADC.c"
   "Src/Ultrasonic/Ultrasonic.c"
+  "Src/Navigation/nav_common.c"
+  "Src/Navigation/search.c"
+  "Src/Navigation/motion.c"
+  "Src/Navigation/routes.c"
+  "Src/Navigation/deposit.c"
+  "Src/Navigation/safety.c"
 )
 
 
@@ -45,6 +51,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
   Src/G474RE_Drivers
   Src/ADC
   Src/Ultrasonic
+  Src/Navigation
   Inc/drivers/CMSIS/Core/Include
   Inc/drivers/cmsis_device_c0/Include
   Inc/drivers/STM32G4xx/Include
