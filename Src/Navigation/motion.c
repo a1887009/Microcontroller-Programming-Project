@@ -107,7 +107,7 @@ static Task_Status Follow_Run(const Kobuki_Typedef *k, int16_t wall_side)
                 int16_t turn = Side_Correction(k, wall_side);
                 if (turn != 0) {
                     Kobuki_Drive(STOP);
-                    Kobuki_Rotate_Angle_Setpoint(k->angle, TURN(turn));
+                    Kobuki_Rotate_Angle_Setpoint(k->angle, turn);
                     moves.phase = FOLLOW_CORRECT;
                     return TASK_RUNNING;
                 }

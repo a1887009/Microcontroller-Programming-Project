@@ -106,7 +106,7 @@ static void Enter_State(Main_State next, const Kobuki_Typedef *k)
 
         case STATE_ORIENT: {
             // face the bollard, then turn onto the path - in one rotation
-            int16_t after = (path == PATH_A) ? TURN(TURN_AFTER_A1_DEG) : TURN(TURN_AFTER_B1_DEG);
+            int16_t after = (path == PATH_A) ? TURN_AFTER_A1_DEG : TURN_AFTER_B1_DEG;
             Orient_Start(k, (int16_t)(Turn_To_Heading_Deg(k->angle, found.heading_cdeg) + after));
             led_1 = YELLOW;
             break;

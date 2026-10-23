@@ -15,11 +15,6 @@
 #define SENSOR_CENTRE       0x02U
 #define SENSOR_LEFT         0x04U
 
-// Turn direction: all left/right turns below use TURN(). If the robot turns
-// the opposite way to every turn, set ROTATE_SIGN to (-1).
-#define ROTATE_SIGN         (1)
-#define TURN(deg)           ((int16_t)((deg) * ROTATE_SIGN))
-
 // ---- Search (used for both the path bollard and the deposit marker) ----
 // Spin until SEARCH_HITS readings in a row are in range, then add
 // SEARCH_CENTRE_DEG to get from the target's first edge to its centre.
@@ -30,10 +25,10 @@
                                     // range, and set this to about half of that.
 
 // ---- Path bollard (seen from the start circle) -------------------------
-#define A1_RANGE_MM         550     // expected reading for A1
-#define B1_RANGE_MM         400     // expected reading for B1
-#define PATH_MIN_MM         330     // search window
-#define PATH_MAX_MM         650
+#define A1_RANGE_MM         650     // expected reading for A1
+#define B1_RANGE_MM         450     // expected reading for B1
+#define PATH_MIN_MM         300     // search window
+#define PATH_MAX_MM         750
 #define TURN_AFTER_A1_DEG   (-90)   // A: right onto the bottom corridor
 #define TURN_AFTER_B1_DEG   (90)    // B: left onto the left corridor
 
@@ -56,15 +51,15 @@
 // The path bollard outside (A2 / B2) is also visible from in there, so a
 // target only counts if it is in the range window AND in the bearing band
 // (degrees either side of the heading the robot arrives with).
-#define DEP_MIN_MM          250
-#define DEP_MAX_MM          520
+#define DEP_MIN_MM          325
+#define DEP_MAX_MM          595
 #define DEP_BAND_MIN_DEG    45
 #define DEP_BAND_MAX_DEG    130
 #define DEP_RIGHT_IS_D1     1       // marker found on the right = D1
 
 // ---- Final approach -----------------------------------------------------
 #define DEPOSIT_TARGET_MM   100     // gap between the robot's front and the marker
-#define SENSOR_TO_FRONT_MM  177     // sensor face -> robot front (177 = sensor at the centre)
+#define SENSOR_TO_FRONT_MM  252     // sensor face -> robot front (177 = sensor at the centre)
 #define DEPOSIT_SAMPLES     25      // readings (median) taken before the final drive
 #define SENSOR_MIN_MM       300     // closest reading the sensor guarantees
 #define DEPOSIT_BACKOFF_MM  80      // too close to measure -> reverse this far and re-measure
