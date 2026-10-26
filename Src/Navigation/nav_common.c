@@ -16,28 +16,9 @@ int16_t Wrap_cdeg(int32_t a)
     return (int16_t)a;
 }
 
-int16_t Wrap_Deg(int32_t deg)
-{
-    deg %= 360;
-    if (deg > 180)       deg -= 360;
-    else if (deg < -180) deg += 360;
-    return (int16_t)deg;
-}
-
 int16_t Turn_To_Heading_Deg(int16_t current_cdeg, int16_t target_cdeg)
 {
     int32_t d = Angle_Delta_cdeg(target_cdeg, current_cdeg);
     // round to the nearest degree, don't truncate
     return (int16_t)((d >= 0) ? (d + 50) / 100 : (d - 50) / 100);
-}
-
-uint16_t Median_mm(uint16_t *v, uint8_t n)
-{
-    for (uint8_t i = 1; i < n; i++) { //insersion sort
-        uint16_t x = v[i];
-        int8_t   j = (int8_t)(i - 1);
-        while ((j >= 0) && (v[j] > x)) { v[j + 1] = v[j]; j--; }
-        v[j + 1] = x;
-    }
-    return v[n / 2U];
 }

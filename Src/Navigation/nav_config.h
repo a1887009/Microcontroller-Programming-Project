@@ -45,9 +45,6 @@
 // Deposit window definition so outside markers are detected
 #define DEP_MIN_MM          250
 #define DEP_MAX_MM          (520 + SENSOR_GLOBAL_OFFSET)
-#define DEP_BAND_MIN_DEG    45
-#define DEP_BAND_MAX_DEG    130
-#define DEP_RIGHT_IS_D1     1       // marker found on the right = D1
 
 // Final approach to drop off
 #define DEPOSIT_TARGET_MM   100     // distance between robot front and the deposit

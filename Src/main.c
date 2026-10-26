@@ -53,7 +53,6 @@ typedef enum {
 
 static Main_State      state;
 static Path            path;
-static Deposit         deposit;
 static Search_Result   found;
 static Kobuki_LED_Enum led_1, led_2;
 
@@ -61,13 +60,6 @@ static Kobuki_LED_Enum led_1, led_2;
 static Path Classify_Path(uint16_t range_mm)
 {
     return (abs(range_mm - A1_RANGE_MM) < abs(range_mm - B1_RANGE_MM)) ? PATH_A : PATH_B;
-}
-
-// D1 or D2: which side of the robot the marker was on
-static Deposit Classify_Deposit(int16_t bearing_deg)
-{
-    uint8_t on_right = (bearing_deg < 0);
-    return (on_right == DEP_RIGHT_IS_D1) ? DEPOSIT_1 : DEPOSIT_2;
 }
 
 // The only place the state changes. One-off setup for each state goes here.
@@ -79,12 +71,11 @@ static void Enter_State(Main_State next, const Kobuki_Typedef *k)
         case STATE_IDLE:
             Kobuki_Drive(STOP);
             path    = PATH_UNKNOWN;
-            deposit = DEPOSIT_UNKNOWN;
             led_1 = OFF;    led_2 = OFF;
             break;
 
         case STATE_PATH_SEARCH:
-            Search_Start(k, PATH_MIN_MM, PATH_MAX_MM, 0, 180);     // any direction
+            Search_Start(k, PATH_MIN_MM, PATH_MAX_MM);
             led_1 = RED;    led_2 = OFF;
             break;
 
@@ -102,7 +93,7 @@ static void Enter_State(Main_State next, const Kobuki_Typedef *k)
             break;
 
         case STATE_DEPOSIT_SEARCH:
-            Search_Start(k, DEP_MIN_MM, DEP_MAX_MM, DEP_BAND_MIN_DEG, DEP_BAND_MAX_DEG);
+            Search_Start(k, DEP_MIN_MM, DEP_MAX_MM);
             led_2 = RED;
             break;
 
@@ -185,7 +176,6 @@ int main(void)
             case STATE_DEPOSIT_SEARCH:
                 s = Search_Run(&kobuki, &object, &found);
                 if (s == TASK_DONE) {
-                    deposit = Classify_Deposit(found.bearing_deg);
                     Enter_State(STATE_DEPOSIT_ORIENT, &kobuki);
                 } else if (s == TASK_FAILED) {
                     Stop_With_LEDs(&kobuki, YELLOW);

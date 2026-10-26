@@ -4,7 +4,7 @@
 // Orient is used for a single rotation
 void Orient_Start(const Kobuki_Typedef *k, int16_t turn_deg)
 {
-    Kobuki_Rotate_Angle_Setpoint(k->angle, Wrap_Deg(turn_deg));
+    Kobuki_Rotate_Angle_Setpoint(k->angle, turn_deg);
 }
 
 Task_Status Orient_Run(const Kobuki_Typedef *k)

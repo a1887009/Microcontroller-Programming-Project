@@ -10,6 +10,18 @@ static struct {
     uint16_t      buf_mm[DEPOSIT_SAMPLES];
 } dep;
 
+// Median of n readings (sorts the array in place)
+static uint16_t Median_mm(uint16_t *v, uint8_t n)
+{
+    for (uint8_t i = 1; i < n; i++) { //insersion sort
+        uint16_t x = v[i];
+        int8_t   j = (int8_t)(i - 1);
+        while ((j >= 0) && (v[j] > x)) { v[j + 1] = v[j]; j--; }
+        v[j + 1] = x;
+    }
+    return v[n / 2U];
+}
+
 void Deposit_Start(uint16_t max_range_mm)
 {
     dep.phase        = DEPOSIT_MEASURE;
