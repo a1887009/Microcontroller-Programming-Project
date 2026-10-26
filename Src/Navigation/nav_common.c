@@ -1,13 +1,8 @@
-/* <student numbers here - required on first line of every .c/.h> */
-/**
- * nav_common.c - angle maths and median.
- * Pure functions: no motor commands, no hardware access.
- */
 #include "nav_common.h"
 
 int32_t Angle_Delta_cdeg(int16_t now, int16_t before)
 {
-    int32_t d = (int32_t)now - (int32_t)before;
+    int32_t d = now - before;
     if (d > 18000)       d -= 36000;
     else if (d < -18000) d += 36000;
     return d;

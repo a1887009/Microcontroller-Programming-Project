@@ -1,7 +1,3 @@
-/*
- * safety.c - hardware safety checks.
- *
- */
 #include "safety.h"
 
 Safety_Fault Safety_Check(const Kobuki_Typedef *k)

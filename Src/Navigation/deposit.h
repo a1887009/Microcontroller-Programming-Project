@@ -1,12 +1,3 @@
-/*
- * deposit.h - drive towards the deposit marker
- *
- *   Deposit_Start(max_range_mm)   once, when entering the state
- *   Deposit_Run(k, obj)           every loop until DONE / FAILED
- *
- * FAILED (robot stays stopped) if the measured range is above max_range_mm
- * (nothing in front) or too close to trust.
- */
 #ifndef DEPOSIT_H
 #define DEPOSIT_H
 

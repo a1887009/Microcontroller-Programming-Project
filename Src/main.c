@@ -17,22 +17,6 @@
  */
 
 /*
- * Flow:
- *   IDLE -> PATH_SEARCH -> ORIENT -> PATHFIND
- *        -> DEPOSIT_SEARCH -> DEPOSIT_ORIENT -> DEPOSIT -> IDLE
- *   B1 or wheel drop from any state -> IDLE
- *
- *   PATH_SEARCH     spin until the start bollard is seen; its range says A or B
- *   ORIENT          turn from the bollard onto the free path
- *   PATHFIND        follow walls / ledges to the corner, drive into storage
- *   DEPOSIT_SEARCH  spin until the marker is seen; its side says D1 or D2
- *   DEPOSIT_ORIENT  face the marker
- *   DEPOSIT         stop with the robot's front 100 mm from it
- *
- * Each loop (one Kobuki packet, ~20 ms): read sensors, check B1 / wheel
- * drop, then run the current state. Enter_State() is the only place the
- * state changes and does each state's one-off setup.
- *
  * LEDs (led_1 / led_2):
  *   PATH_SEARCH red, ORIENT yellow, PATHFIND green,
  *   DEPOSIT_SEARCH green/red, DEPOSIT_ORIENT green/yellow, DEPOSIT green/green
@@ -76,7 +60,7 @@ static Kobuki_LED_Enum led_1, led_2;
 // A or B: whichever expected range the bollard is closer to
 static Path Classify_Path(uint16_t range_mm)
 {
-    return (abs((int)range_mm - A1_RANGE_MM) < abs((int)range_mm - B1_RANGE_MM)) ? PATH_A : PATH_B;
+    return (abs(range_mm - A1_RANGE_MM) < abs(range_mm - B1_RANGE_MM)) ? PATH_A : PATH_B;
 }
 
 // D1 or D2: which side of the robot the marker was on

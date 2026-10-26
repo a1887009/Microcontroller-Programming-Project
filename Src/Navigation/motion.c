@@ -1,15 +1,3 @@
-/*
- * motion.c - precise turns and drives using the P-controller wrappers.
- *
- * Pattern for every move: setpoint once -> controller every loop ->
- * stop when the complete flag is set.
- *
- * Two things to know about the wrappers:
- *  - The complete flag is copied in Kobuki_Read(). Setpoints here are always
- *    set AFTER that loop's read, so the next loop's flag is already fresh.
- *  - Once complete, the controller stops sending commands, and the Kobuki
- *    keeps its last speed - so we send STOP explicitly.
- */
 #include "motion.h"
 #include "nav_config.h"
 
@@ -31,7 +19,6 @@ Task_Status Orient_Run(const Kobuki_Typedef *k)
 
 
 // Moves are used to follow a list of instructions
-
 // FOLLOW has its own small state machine
 typedef enum { FOLLOW_DRIVE, FOLLOW_CORRECT, FOLLOW_BACKUP } Follow_Phase;
 

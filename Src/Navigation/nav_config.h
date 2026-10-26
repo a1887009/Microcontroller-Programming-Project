@@ -1,8 +1,3 @@
-/*
- * nav_config.h - every tuning value in one place.
- *
- * Angles: +ve = left (CCW). Distances in mm.
- */
 #ifndef NAV_CONFIG_H
 #define NAV_CONFIG_H
 
@@ -15,53 +10,50 @@
 #define SENSOR_CENTRE       0x02U
 #define SENSOR_LEFT         0x04U
 
-// ---- Search (used for both the path bollard and the deposit marker) ----
-// Spin until SEARCH_HITS readings in a row are in range, then add
-// SEARCH_CENTRE_DEG to get from the target's first edge to its centre.
-#define SCAN_SPEED          50      // mm/s
-#define SEARCH_HITS         10      // loops in a row (~5 loops per sensor reading)
-#define SEARCH_CENTRE_DEG   12      // first edge -> centre. Tune: spin slowly past a
-                                    // bollard, note over how many degrees it reads in
-                                    // range, and set this to about half of that.
+// Global offset defined for kobuki testing
+#define SENSOR_GLOBAL_OFFSET 100
 
-// ---- Path bollard (seen from the start circle) -------------------------
-#define A1_RANGE_MM         650     // expected reading for A1
-#define B1_RANGE_MM         450     // expected reading for B1
-#define PATH_MIN_MM         300     // search window
-#define PATH_MAX_MM         750
+// Search variables
+#define SCAN_SPEED          50      // mm/s
+#define SEARCH_HITS         10      // how many times the search must accept a reading
+#define SEARCH_CENTRE_DEG   12      // distance from first edge to the centre (degrees) 
+                                    // mainly used as an extimation
+
+// Bollard variables
+#define A1_RANGE_MM         (550 + SENSOR_GLOBAL_OFFSET)    // expected reading for A1
+#define B1_RANGE_MM         (400 + SENSOR_GLOBAL_OFFSET)    // expected reading for B1
+#define PATH_MIN_MM         (330 + SENSOR_GLOBAL_OFFSET)    // search window
+#define PATH_MAX_MM         (650 + SENSOR_GLOBAL_OFFSET)
 #define TURN_AFTER_A1_DEG   (-90)   // A: right onto the bottom corridor
 #define TURN_AFTER_B1_DEG   (90)    // B: left onto the left corridor
 
-// ---- Following walls / ledges -----------------------------------------
+// Following variables
 #define LEG_SPEED           100     // mm/s
-#define SIDE_CORRECT_DEG    5       // turn away from a side bumper / side cliff
-#define FRONT_CORRECT_DEG   15      // turn away from the wall on a head-on bump
-#define CLIFF_CONFIRM_LOOPS 2       // front cliff seen this many loops in a row = ledge
-#define LEG_BACKUP_MM       50      // reverse after the front cliff, before turning
-#define LEG_TIMEOUT_LOOPS   1500    // ~30 s without finding a ledge -> give up
+#define SIDE_CORRECT_DEG    5       // angle to turn when the side detects a collision/drop
+#define FRONT_CORRECT_DEG   15      // incase front sensor triggers when not expected (very rare)
+#define CLIFF_CONFIRM_LOOPS 2       // how many times the front cliff must detect 
+#define LEG_BACKUP_MM       50      // distance it backs up to prepare for turn
+#define LEG_TIMEOUT_LOOPS   1500    // ~30 s how long before it gives up finding the ledge
 
-// ---- Corner and into storage ------------------------------------------
+// Turns degrees
 #define TURN_CORNER_A_DEG   (90)
 #define TURN_CORNER_B_DEG   (-90)
-#define TURN_TO_STORAGE_A_DEG (130)    // 135 on paper; side corrections leave the robot
-#define TURN_TO_STORAGE_B_DEG (-130)   // ~5 deg towards the wall, 130 cancels that
-#define STORAGE_DRIVE_MM    950     // corner -> middle of storage (sim best: 950; 1000 too far)
+#define TURN_TO_STORAGE_A_DEG (130)
+#define TURN_TO_STORAGE_B_DEG (-130)
+#define STORAGE_DRIVE_MM    950     // corner -> middle of storage
 
-// ---- Deposit marker (seen from the middle of storage) -----------------
-// The path bollard outside (A2 / B2) is also visible from in there, so a
-// target only counts if it is in the range window AND in the bearing band
-// (degrees either side of the heading the robot arrives with).
-#define DEP_MIN_MM          325
-#define DEP_MAX_MM          595
+// Deposit window definition so outside markers are detected
+#define DEP_MIN_MM          250
+#define DEP_MAX_MM          (520 + SENSOR_GLOBAL_OFFSET)
 #define DEP_BAND_MIN_DEG    45
 #define DEP_BAND_MAX_DEG    130
 #define DEP_RIGHT_IS_D1     1       // marker found on the right = D1
 
-// ---- Final approach -----------------------------------------------------
-#define DEPOSIT_TARGET_MM   100     // gap between the robot's front and the marker
-#define SENSOR_TO_FRONT_MM  252     // sensor face -> robot front (177 = sensor at the centre)
-#define DEPOSIT_SAMPLES     25      // readings (median) taken before the final drive
-#define SENSOR_MIN_MM       300     // closest reading the sensor guarantees
-#define DEPOSIT_BACKOFF_MM  80      // too close to measure -> reverse this far and re-measure
+// Final approach to drop off
+#define DEPOSIT_TARGET_MM   100     // distance between robot front and the deposit
+#define SENSOR_TO_FRONT_MM  (177 + SENSOR_GLOBAL_OFFSET)    // distance from robot front to sensor + offset
+#define DEPOSIT_SAMPLES     25      // how many sample readings to determine distance
+#define SENSOR_MIN_MM       300     // defined by the ultrasonic
+#define DEPOSIT_BACKOFF_MM  80      // too close for accurate reading
 
 #endif // NAV_CONFIG_H

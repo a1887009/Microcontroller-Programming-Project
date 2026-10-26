@@ -1,9 +1,3 @@
-/*
- * nav_common.h - shared types and angle helpers
- *
- * Angles: kobuki.angle is in 0.01 deg ("cdeg"), range -18000..18000.
- *         +ve rotation = CCW (left).
- */
 #ifndef NAV_COMMON_H
 #define NAV_COMMON_H
 

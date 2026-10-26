@@ -1,11 +1,3 @@
-/*
- * deposit.c - drive towards the deposit marker
- *
- * Stand still, take the median of DEPOSIT_SAMPLES readings, then drive the
- * rest of the way with wheel odometry so the robot's front stops
- * DEPOSIT_TARGET_MM from the marker. (The final reading would be below the
- * sensor's guaranteed 300 mm, so the last part can't be done by sensor.)
- */
 #include "deposit.h"
 #include "nav_config.h"
 
@@ -32,7 +24,7 @@ Task_Status Deposit_Run(const Kobuki_Typedef *k, const US_Typedef *obj)
             Kobuki_Drive(STOP);
             dep.buf_mm[dep.samples++] = obj->range_mm;
             if (dep.samples >= DEPOSIT_SAMPLES) { // Run for n number of samples to collect an accurate sensor reading 
-                int32_t range = (int32_t)Median_mm(dep.buf_mm, dep.samples); // Find the median of the sensor reading
+                uint16_t range = Median_mm(dep.buf_mm, dep.samples); // Find the median of the sensor reading
 
                 // Too close for the sensor to measure: reverse, then measure again
                 if (range <= SENSOR_MIN_MM) {
@@ -42,13 +34,13 @@ Task_Status Deposit_Run(const Kobuki_Typedef *k, const US_Typedef *obj)
                 }
 
                 // If it is significantly above an expected range then compute an error
-                if (range > (int32_t)dep.max_range_mm) {
+                if (range > dep.max_range_mm) {
                     return TASK_FAILED;
                 }
 
-                int32_t gap = range - DEPOSIT_TARGET_MM - SENSOR_TO_FRONT_MM; // Set the gap needed to be driven
-                if (gap < 0) gap = 0;
-                Kobuki_Drive_Distance_Setpoint(k->distance, (int16_t)gap); // Set our setpoint at target distance
+                int16_t gap = (int16_t)(range - DEPOSIT_TARGET_MM - SENSOR_TO_FRONT_MM); // Set the gap needed to be driven
+                // negative gap = already closer than the target: this reverses by that much
+                Kobuki_Drive_Distance_Setpoint(k->distance, gap); // Set our setpoint at target distance
                 dep.phase = DEPOSIT_DRIVE;
             }
             return TASK_RUNNING;

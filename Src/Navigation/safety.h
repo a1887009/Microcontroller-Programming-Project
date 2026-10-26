@@ -1,9 +1,3 @@
-/*
- * safety.h - hardware safety checks, run every loop before the FSM.
- *
- * Bumpers and cliff sensors are no longer faults - they are used to
- * navigate (see MOVE_FOLLOW in motion.c). Only a wheel drop stops the run.
- */
 #ifndef SAFETY_H
 #define SAFETY_H
 

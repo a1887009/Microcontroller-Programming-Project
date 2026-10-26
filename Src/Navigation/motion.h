@@ -1,18 +1,3 @@
-/*
- * motion.h - precise turns and drives using the P-controller wrappers.
- *
- *   Orient_*  one rotation by a number of degrees
- *   Moves_*   a list of steps run one after another:
- *               MOVE_ROTATE  turn by value degrees (+ve = CCW)
- *               MOVE_DRIVE   drive value mm (odometry)
- *               MOVE_FOLLOW  drive forward along a wall / ledge until the
- *                            front cliff sensor sees the drop, then back up.
- *                            value = which side the wall is on (WALL_LEFT /
- *                            WALL_RIGHT), used for a head-on bump.
- *
- * Start() functions set the target only (no motor command). Run() sends
- * at most one motor command and must be called every loop.
- */
 #ifndef MOTION_H
 #define MOTION_H
 

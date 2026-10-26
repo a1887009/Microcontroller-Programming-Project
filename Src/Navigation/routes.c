@@ -1,22 +1,12 @@
-/*
- * routes.c - the pre-planned move list for each path.
- *
- * The route begins with the robot facing down the path (after ORIENT).
- * Each leg follows the wall / ledge until the front cliff sensor sees the
- * drop, backs up, then turns. The route ends with the robot in the centre
- * of the storage unit, ready for DEPOSIT_SEARCH.
- *
- * Turns: +ve = left (CCW).
- */
 #include "routes.h"
 #include "nav_config.h"
 
 // Path A: wall on the left, drop on the right
 static const Move route_A[] = {
     { MOVE_FOLLOW, WALL_LEFT },                      // to the first ledge
-    { MOVE_ROTATE, TURN_CORNER_A_DEG },        // left 90
+    { MOVE_ROTATE, TURN_CORNER_A_DEG },              // left 90
     { MOVE_FOLLOW, WALL_LEFT },                      // to the corner
-    { MOVE_ROTATE, TURN_TO_STORAGE_A_DEG },    // left 135
+    { MOVE_ROTATE, TURN_TO_STORAGE_A_DEG },          // left 135
     { MOVE_DRIVE,  STORAGE_DRIVE_MM },               // into the storage unit
     { MOVE_END,    0 }
 };

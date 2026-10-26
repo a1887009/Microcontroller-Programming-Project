@@ -1,11 +1,3 @@
-/*
- * search.c - spin on the spot until a target is found.
- *
- * The robot spins left. The target first appears at its right-hand edge,
- * so SEARCH_CENTRE_DEG is added to that first heading to face its centre.
- * Angles are a running total of how far the robot has turned, so the
- * +/-180 deg jump in kobuki.angle doesn't matter.
- */
 #include <stdlib.h>
 #include "search.h"
 #include "nav_config.h"
@@ -57,7 +49,7 @@ Task_Status Search_Run(const Kobuki_Typedef *k, const US_Typedef *obj,
             int32_t back   = search.turned_cdeg - centre;   // centre is this far behind us
 
             result->range_mm     = (uint16_t)(search.sum_mm / search.hits);
-            result->heading_cdeg = Wrap_cdeg((int32_t)k->angle - back);
+            result->heading_cdeg = Wrap_cdeg(k->angle - back);
             result->bearing_deg  = (int16_t)(Wrap_cdeg(centre) / 100);
             Kobuki_Drive(STOP);
             return TASK_DONE;
@@ -68,7 +60,7 @@ Task_Status Search_Run(const Kobuki_Typedef *k, const US_Typedef *obj,
 
     if (labs(search.turned_cdeg) > 36000) {  // full turn, nothing found
         Kobuki_Drive(STOP);
-        return TASK_FAILED;
+        return TASK_FAILED; // fail if noting found in a full turn
     }
 
     Kobuki_Rotate(SCAN_SPEED);               // spin left
