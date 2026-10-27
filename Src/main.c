@@ -41,6 +41,36 @@
 #include "deposit.h"
 #include "safety.h"
 
+
+// Calibration testing TEMP
+int main(void)
+{
+    Kobuki_Typedef  kobuki = {0};
+    US_Typedef      object = {0};
+    Kobuki_LED_Enum colour;
+
+    UART_Init();
+    ADC_Init();
+    Ultrasonic_Init();
+
+    #define CAL_TARGET_MM   450
+    #define CAL_TOL_MM      25 // window
+
+    while (1) {
+        Kobuki_Read(&kobuki);
+        Ultrasonic_Detect(&object);
+
+        uint16_t r = object.range_mm;
+        if (r >= ULTRASONIC_MAX_RANGE_MM)        colour = OFF;     // no echo
+        else if (r < CAL_TARGET_MM - CAL_TOL_MM) colour = RED;     // too close
+        else if (r > CAL_TARGET_MM + CAL_TOL_MM) colour = YELLOW;  // too far
+        else                                     colour = GREEN;   // on target
+
+        Kobuki_Update_LEDs(colour, colour);
+        Kobuki_Drive(STOP);
+    }
+}
+
 typedef enum {
     STATE_IDLE,
     STATE_PATH_SEARCH,
