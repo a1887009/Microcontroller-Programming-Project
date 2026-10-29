@@ -11,7 +11,7 @@
 #define SENSOR_LEFT         0x04U
 
 // Global offset defined for kobuki testing
-#define SENSOR_GLOBAL_OFFSET 100
+#define SENSOR_GLOBAL_OFFSET 125
 
 // Search variables
 #define SCAN_SPEED          50      // mm/s
@@ -38,13 +38,13 @@
 // Turns degrees
 #define TURN_CORNER_A_DEG   (90)
 #define TURN_CORNER_B_DEG   (-90)
-#define TURN_TO_STORAGE_A_DEG (130)
-#define TURN_TO_STORAGE_B_DEG (-130)
+#define TURN_TO_STORAGE_A_DEG (132)
+#define TURN_TO_STORAGE_B_DEG (-132)
 #define STORAGE_DRIVE_MM    950     // corner -> middle of storage
 
 // Deposit window definition so outside markers are detected
 #define DEP_MIN_MM          250
-#define DEP_MAX_MM          (520 + SENSOR_GLOBAL_OFFSET)
+#define DEP_MAX_MM          (450 + SENSOR_GLOBAL_OFFSET)
 
 // Final approach to drop off
 #define DEPOSIT_TARGET_MM   100     // distance between robot front and the deposit
