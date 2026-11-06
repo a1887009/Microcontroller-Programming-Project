@@ -1,3 +1,4 @@
+// a1887009, a1921636, a1645500
 #include "nav_common.h"
 
 int32_t Angle_Delta_cdeg(int16_t now, int16_t before)
