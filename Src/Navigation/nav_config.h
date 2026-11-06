@@ -16,7 +16,7 @@
 // Search variables
 #define SCAN_SPEED          50      // mm/s
 #define SEARCH_HITS         10      // how many times the search must accept a reading
-#define SEARCH_CENTRE_DEG   12      // distance from first edge to the centre (degrees) 
+#define SEARCH_CENTRE_DEG   12      // distance from first edge to the centre (degrees) - adjust for final rotation left = dec right = inc
                                     // mainly used as an extimation
 
 // Bollard variables
@@ -36,11 +36,11 @@
 #define LEG_TIMEOUT_LOOPS   1500    // ~30 s how long before it gives up finding the ledge
 
 // Turns degrees
-#define TURN_CORNER_A_DEG   (90)
-#define TURN_CORNER_B_DEG   (-90)
-#define TURN_TO_STORAGE_A_DEG (132)
-#define TURN_TO_STORAGE_B_DEG (-132)
-#define STORAGE_DRIVE_MM    950     // corner -> middle of storage
+#define TURN_CORNER_A_DEG        (90)
+#define TURN_CORNER_B_DEG        (-90)
+#define TURN_TO_STORAGE_A_DEG    (132)
+#define TURN_TO_STORAGE_B_DEG    (-132)
+#define STORAGE_DRIVE_MM         950     // corner -> middle of storage 950 default
 
 // Deposit window definition so outside markers are detected
 #define DEP_MIN_MM          250
@@ -52,5 +52,6 @@
 #define DEPOSIT_SAMPLES     25      // how many sample readings to determine distance
 #define SENSOR_MIN_MM       300     // defined by the ultrasonic
 #define DEPOSIT_BACKOFF_MM  80      // too close for accurate reading
+#define EXTRA_ANGLE         20 //extra final approach angle
 
-#endif // NAV_CONFIG_H
+#endif // NAV_CONFIG_H 

@@ -41,7 +41,7 @@
 #include "deposit.h"
 #include "safety.h"
 
-
+/*
 // Calibration testing TEMP
 int main(void)
 {
@@ -70,7 +70,7 @@ int main(void)
         Kobuki_Drive(STOP);
     }
 }
-
+*/
 typedef enum {
     STATE_IDLE,
     STATE_PATH_SEARCH,
@@ -128,7 +128,7 @@ static void Enter_State(Main_State next, const Kobuki_Typedef *k)
             break;
 
         case STATE_DEPOSIT_ORIENT:
-            Orient_Start(k, Turn_To_Heading_Deg(k->angle, found.heading_cdeg));
+            Orient_Start(k, Turn_To_Heading_Deg(k->angle, found.heading_cdeg) + EXTRA_ANGLE);
             led_2 = YELLOW;
             break;
 
